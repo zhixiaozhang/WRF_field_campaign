@@ -368,7 +368,7 @@ CONTAINS
   !~ Description:
   !~    This function calculates precipitable water by summing up the 
   !~    water vapor in a column from the first eta layer to model top
-  !~ 
+  !~
   !!!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!!!
   FUNCTION Pwat  ( nz, qv, qc, dz8w, rho )
 
@@ -388,7 +388,10 @@ CONTAINS
      !  ---------------------------
      Pwat=0
      DO k = 1, nz
-       Pwat = Pwat + qv(k) * dz8w(k) * rho(k) !only compute from qv zhixiao
+       !Based on AMS PWAT defination (https://glossary.ametsoc.org/wiki/Precipitable_water)
+       !PWAT is corrected as the column accumulated water vapor rather than water vapor + cloud water.
+       !Modified by Zhixiao
+       Pwat = Pwat + qv(k) * dz8w(k) * rho(k)
      ENDDO
              
   END FUNCTION Pwat
@@ -437,7 +440,7 @@ CONTAINS
   !~                                                                          ~!
   !!!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!!!
     FUNCTION Buoyancy ( nz, tk, rh, p, hgt, sfc, cape, cin, zlcl, zlfc, zel, zmu,  &
-                        parcel ) result (ostat) !zhixiao
+                        parcel ) result (ostat) !Add declaration of lcl, el, and MU layer. Modified by Zhixiao.
   
       IMPLICIT NONE
   
@@ -449,10 +452,10 @@ CONTAINS
       REAL,    INTENT ( IN )  :: hgt  ( nz ) !~ Height profile ( gpm )
       REAL,    INTENT ( OUT ) :: cape        !~ CAPE ( J kg^-1 )
       REAL,    INTENT ( OUT ) :: cin         !~ CIN  ( J kg^-1 )
-      REAL,    INTENT ( OUT ) :: zlcl        !~ LCL Height ( gpm ) zhixiao
+      REAL,    INTENT ( OUT ) :: zlcl        !~ LCL Height ( gpm ) Modified by Zhixiao.
       REAL,    INTENT ( OUT ) :: zlfc        !~ LFC Height ( gpm )
-      REAL,    INTENT ( OUT ) :: zel         !~ EL Height ( gpm )
-      REAL,    INTENT ( OUT ) :: zmu         !~ Most unstable parcel height ( gpm )
+      REAL,    INTENT ( OUT ) :: zel         !~ EL Height ( gpm ) Modified by Zhixiao.
+      REAL,    INTENT ( OUT ) :: zmu         !~ Most unstable parcel height ( gpm ) Modified by Zhixiao.
       INTEGER                 :: ostat       !~ Function return status
                                              !~ Nonzero is bad.
 
@@ -464,12 +467,12 @@ CONTAINS
       !  -------------------------
       REAL                    :: ws   ( nz ) !~ Saturation mixing ratio
       REAL                    :: w    ( nz ) !~ Mixing ratio
-      REAL                    :: etheta( nz )!~ Equivalent potential temperature !zhixiao
+      REAL                    :: etheta( nz )!~ Equivalent potential temperature. Modified by Zhixiao.
       REAL                    :: dTvK ( nz ) !~ Parcel / ambient Tv difference
       REAL                    :: buoy ( nz ) !~ Buoyancy
       REAL                    :: tlclK       !~ LCL temperature ( K )
       REAL                    :: plcl        !~ LCL pressure ( Pa )
-      REAL                    :: pel         !~ EL pressure ( Pa ) !zhixiao
+      REAL                    :: pel         !~ EL pressure ( Pa ). Modified by Zhixiao.
       REAL                    :: nbuoy       !~ Negative buoyancy
       REAL                    :: pbuoy       !~ Positive buoyancy
   
@@ -484,7 +487,7 @@ CONTAINS
       REAL                    :: srcthetaeK  !~ Source parcel theta-e ( K )
       INTEGER                 :: srclev      !~ Level of the source parcel
       REAL                    :: spdiff      !~ Pressure difference
-      REAL                    :: srce        !~ Equivalent potential temperature ( K )
+      REAL                    :: srce        !~ Equivalent potential temperature ( K ). Modified by Zhixiao.
    
       !~ Parcel variables
       !  ----------------
@@ -497,8 +500,8 @@ CONTAINS
       !  -----------------------
       INTEGER                 :: i, j, k    !~ Dummy iterator
       INTEGER                 :: lfclev     !~ Level of LFC
-      INTEGER                 :: ellev      !~ Level of EL zhixiao
-      INTEGER                 :: lcllev     !~ Level of LCL zhixiao
+      INTEGER                 :: ellev      !~ Level of EL. Modified by Zhixiao.
+      INTEGER                 :: lcllev     !~ Level of LCL. Modified by Zhixiao.
       INTEGER                 :: prcl       !~ Internal parcel type indicator
       INTEGER                 :: mlev       !~ Level for ML calculation
       INTEGER                 :: lyrcnt     !~ Number of layers in mean layer
@@ -506,7 +509,7 @@ CONTAINS
       LOGICAL                 :: wflag      !~ Saturation flag
       REAL                    :: freeze     !~ Water loading multiplier
       REAL                    :: pdiff      !~ Pressure difference between levs
-      REAL                    :: hdiff      !~ Height difference between levs 
+      REAL                    :: hdiff      !~ Height difference between levs. Modified by Zhixiao. 
       REAL                    :: pm, pu, pd !~ Middle, upper, lower pressures
       REAL                    :: lidxu      !~ Lifted index at upper level
       REAL                    :: lidxd      !~ Lifted index at lower level
@@ -520,17 +523,17 @@ CONTAINS
       REAL                    :: g          !~ Acceleration due to gravity
          PARAMETER ( g  = 9.80665 )         !~ m s^-2
       REAL                    :: RUNDEF
-         PARAMETER ( RUNDEF = -999 ) !zhixiao
+         PARAMETER ( RUNDEF = -999 ) !Specialized for CACTI. CACTI-Simulation default filling value is -999. Modified by Zhixiao. Please reset RUNDEF = -9.999E30 for general use. 
   
       !~ Initialize variables zhixiao
       !  --------------------
       ostat  = 0
       CAPE   = REAL ( 0 )
-      CIN    = RUNDEF
+      CIN    = RUNDEF !Change CIN filling values from 0 to default filling. CIN should not initally filled by 0, because 0 means no inhibition energy. Modified by Zhixiao
       ZLFC   = RUNDEF
-      ZLCL   = RUNDEF
-      ZEL    = RUNDEF
-      ZMU    = RUNDEF
+      ZLCL   = RUNDEF ! Modified by Zhixiao
+      ZEL    = RUNDEF ! Modified by Zhixiao
+      ZMU    = RUNDEF ! Modified by Zhixiao
   
       !~ Look for submitted parcel definition
       !~ 1 = Most unstable
@@ -558,8 +561,11 @@ CONTAINS
       DO k = sfc, nz
         ws  ( k )   = SaturationMixingRatio ( tK(k), p(k) )
         w   ( k )   = ( rh(k)/100.0 ) * ws ( k )
-        !thetav(k)   = Theta ( VirtualTemperature ( tK (k), w (k) ), p(k)/100.0 ) !zhixiao
-        etheta(k)   = Thetae( tK(k), p(k)/100.0, rh(k), w(k) ) !zhixiao
+        !Removed by Zhixiao. Water vapor mixing ratio (w) is not conserved during parcel lifting processes. We should not use w to define MU layer.
+        !thetav(k)   = Theta ( VirtualTemperature ( tK (k), w (k) ), p(k)/100.0 )
+        !Added by Zhixiao. Critical modification: We use the model level with maximum equivalent potential temperature (etheta) below 500mb to define the MU layer
+        !Because equivalent potential temperature is conseved both in dry and moist adiabatic processes.
+        etheta(k)   = Thetae( tK(k), p(k)/100.0, rh(k), w(k) )
       END DO
   
       srclev      = sfc
@@ -569,34 +575,38 @@ CONTAINS
       srcws       = ws    ( sfc )
       srcw        = w     ( sfc )
       srctheta    = Theta ( tK(sfc), p(sfc)/100.0 )
-      srce        = etheta (sfc) !zhixiao
+      srce        = etheta (sfc) !Modified by Zhixiao
    
       !~ Compute the profile mixing ratio.  If the parcel is the MU parcel,
       !~ define our parcel to be the most unstable parcel within the lowest
       !~ 180 mb.
       !  -------------------------------------------------------------------
       mlev = sfc + 1
-      DO k = sfc, nz !zhixiao
+      !Change initial searching level from the second to first model level. Because we did not compute pdiff, and p(k-1) properties is unnecessary.
+      !Modified by Zhixiao.
+      DO k = sfc, nz
    
          !~ Identify the last layer within 100 hPa of the surface
          !  -----------------------------------------------------
          pdiff = ( p (sfc) - p (k) ) / REAL ( 100 )
          IF ( pdiff <= REAL (100) ) mlev = k
 
-         !~ If we've made it past the lowest 500 hPa, exit the loop zhixiao
+         !~ If we've made it past the lowest 500 hPa, exit the loop. MU layer is assumed below 500 hPa. Modified by Zhixiao.
          !  -------------------------------------------------------
          IF ( p(k) <= REAL (50000) ) EXIT
 
          IF ( prcl == 1 ) THEN
+            ! Removed by Zhixiao, w can not used for defining MU layer
             !IF ( (p(k) > 70000.0) .and. (w(k) > srcw) ) THEN
-            IF (etheta(k) > srce)  THEN
+            ! Modified by Zhixiao, MU layer is featured by the max etheta
+            IF (etheta(k) > srce)  THEN !Modified by Zhixiao.
                srctheta = Theta ( tK(k), p(k)/100.0 )
                srcw = w ( k )
                srclev  = k
                srctK   = tK ( k )
                srcrh   = rh ( k )
                srcp    = p  ( k )
-               srce = etheta(k)
+               srce = etheta(k) !Modified by Zhixiao
             END IF
          END IF
    
@@ -622,16 +632,18 @@ CONTAINS
       !  ---------------------------------------------
       tlclK = TLCL ( tK(srclev), rh(srclev) )
       plcl  = p(srclev) * ( (tlclK/tK(srclev))**(Cp/Rd) )
-      lcllev = -1
-      flag=.false. 
-      DO k=sfc,nz !zhixiao find the layer of LCL
-         IF (p (k) <= plcl) THEN
-             lcllev=k
-             flag=.true.
-         END IF
-         IF (flag) EXIT
-      END DO      
-      flag=.false.
+      
+      !Add caculation for LCL. Modified by Zhixiao
+      lcllev = -1 !Modified by Zhixiao
+      flag=.false. !Modified by Zhixiao
+      DO k=sfc,nz !zhixiao search the layer of LCL
+         IF (p (k) <= plcl) THEN !Modified by Zhixiao
+             lcllev=k !Modified by Zhixiao
+             flag=.true. !Modified by Zhixiao
+         END IF !Modified by Zhixiao
+         IF (flag) EXIT !Modified by Zhixiao
+      END DO !Modified by Zhixiao  
+      flag=.false. !Modified by Zhixiao
       !~ Now lift the parcel
       !  -------------------
    
@@ -749,34 +761,35 @@ CONTAINS
       !  -----------------------------------
       flag   = .false.
       lfclev = -1
-      ellev = -1
-      DO k = sfc, nz !zhixiao
-         !~ We are buoyant now - passed the lowest LFC
+      ellev = -1 !Modified by Zhixiao
+      DO k = sfc, nz !Modified by Zhixiao
+         !~ LFC is defiend as the highest level when negative buyancy turns postive.
+         ! Let us ignore the lower LFCs, and keep the highest LFC as the final result
          !  -----------------------------------
-         IF ( .not. flag .and. buoy (k) > REAL (0) .and. p (k) <= plcl ) THEN !zhixiao
+         IF ( .not. flag .and. buoy (k) > REAL (0) .and. p (k) <= plcl ) THEN !Modified by Zhixiao
             flag = .true.
             lfclev = k
          END IF
-         !~ Find Highest EL zhixiao 
+         !~ Take the Highest EL as final result. Modified by Zhixiao
          !  ----------------------------------------------------------------
-         IF (k >= 2) THEN
-            IF ( flag .and. buoy (k) < REAL (0) .and. buoy (k-1) >= REAL (0)) THEN
-               ellev = k
+         IF (k >= 2) THEN !Modified by Zhixiao
+            IF ( flag .and. buoy (k) < REAL (0) .and. buoy (k-1) >= REAL (0)) THEN !Modified by Zhixiao
+               ellev = k !Modified by Zhixiao
             END IF
          END IF
       END DO
-      IF (ellev >= 0) THEN 
-         pel = p(ellev)
-         CIN=REAL ( 0 )
-         DO k = sfc+1, nz !zhixiao
-            ! compute CAPE and CIN between LCL and EL zhixiao
-            IF ( p (k) <= plcl .and. p (k) >= pel) THEN
-               CAPE = CAPE + MAX ( buoy (k), 0.0 ) * ( hgt (k) - hgt (k-1) )
-               CIN  = CIN  + MIN ( buoy (k), 0.0 ) * ( hgt (k) - hgt (k-1) )
-            END IF         
-         END DO
-      END IF
-      !~ Assuming the LCL and LFC are at a pressure level for now
+      IF (ellev >= 0) THEN !Modified by Zhixiao
+         pel = p(ellev) !Modified by Zhixiao
+         CIN=REAL ( 0 ) !Modified by Zhixiao
+         DO k = sfc+1, nz !Modified by Zhixiao
+            ! CAPE and CIN is defined as integrated positive and negative buoyant energy between LCL and EL, respectively. Modified by Zhixiao
+            IF ( p (k) <= plcl .and. p (k) >= pel) THEN !Modified by Zhixiao
+               CAPE = CAPE + MAX ( buoy (k), 0.0 ) * ( hgt (k) - hgt (k-1) ) !Modified by Zhixiao
+               CIN  = CIN  + MIN ( buoy (k), 0.0 ) * ( hgt (k) - hgt (k-1) ) !Modified by Zhixiao
+            END IF !Modified by Zhixiao         
+         END DO !Modified by Zhixiao
+      END IF !Modified by Zhixiao
+      !~ Covert LCL and LFC from pressure level to height. Modified by Zhixiao
       !  ---------------------------------------------------
       IF ( lfclev > 0 ) THEN
          ZLFC = hgt ( lfclev )
@@ -786,15 +799,15 @@ CONTAINS
   !       ZLFC = REAL ( -1 )
   !    END IF
 
-      IF ( lcllev > 0 ) THEN !zhixiao
-         ZLCL = hgt ( lcllev )
-      END IF
+      IF ( lcllev > 0 ) THEN !Modified by Zhixiao
+         ZLCL = hgt ( lcllev ) !Modified by Zhixiao
+      END IF !Modified by Zhixiao
 
-      IF ( ellev > 0 ) THEN
-         ZEL = hgt ( ellev ) !zhixiao
-      END IF
+      IF ( ellev > 0 ) THEN !Modified by Zhixiao
+         ZEL = hgt ( ellev ) !Modified by Zhixiao
+      END IF !Modified by Zhixiao
 
-      ZMU = hgt ( srclev ) !zhixiao
+      ZMU = hgt ( srclev ) !Modified by Zhixiao
 
       !~ Chirp
       !  -----
